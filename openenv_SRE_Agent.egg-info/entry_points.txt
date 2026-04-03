@@ -1,0 +1,2 @@
+[console_scripts]
+server = SRE_Agent.server.app:main
