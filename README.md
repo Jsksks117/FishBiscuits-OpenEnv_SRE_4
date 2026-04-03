@@ -1,6 +1,6 @@
 ---
 title: SRE Agent Sandbox
-emoji: none
+emoji: 🚀
 colorFrom: blue
 colorTo: indigo
 sdk: docker
