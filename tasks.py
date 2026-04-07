@@ -59,9 +59,9 @@ TASK_DEFINITIONS = {
         "PID file somewhere. The server needs to be restarted and "
         "listening on port 80. Diagnose the issue, clean up any stale state, "
         "and restart the service.\n"
-        "give step by step commands to fix the issue.\n"
         "IMPORTANT: This is a Docker container — use 'service nginx start' "
         "instead of 'systemctl'."
+        "give step by step commands to fix the issue.\n"
     ),
     "setup_script": (
         "set -e\n"
@@ -250,7 +250,7 @@ def _grade_permissions(container) -> float:
     if len(history) > 10:
         score -= 0.1
 
-    return max(0.0, min(1.0, score))
+    return max(0.01, min(0.99, score))
 
 
 def _grade_service(container) -> float:
@@ -311,7 +311,7 @@ def _grade_service(container) -> float:
     # return max(-1.0, round(score, 2))
 
     # return min(round(score, 2), 1.0)
-    return max(0.0, min(1.0, round(score, 2)))
+    return max(0.01, min(0.99, round(score, 2)))
 
 
 def _grade_nginx_config(container) -> float:
@@ -362,7 +362,7 @@ def _grade_nginx_config(container) -> float:
     if "apt install" in history and "nginx" not in history:
         score -= 0.1
 
-    return max(0.0, min(1.0, round(score, 2)))
+    return max(0.01, min(0.99, round(score, 2)))
 
 
 def _grade_port_conflict(container) -> float:
@@ -385,7 +385,7 @@ def _grade_port_conflict(container) -> float:
     if "nginx" in port_owner:
         score += 0.6
 
-    return max(0.0, min(1.0, round(score, 2)))
+    return max(0.01, min(0.99, round(score, 2)))
 
 
 def _grade_disk_pressure(container) -> float:
@@ -416,7 +416,7 @@ def _grade_disk_pressure(container) -> float:
     if dir_check == "DELETED":
         score -= 0.4
 
-    return max(0.0, min(1.0, round(score, 2)))
+    return max(0.01, min(0.99, round(score, 2)))
 
 
 def _grade_dns_poisoning(container) -> float:
@@ -445,4 +445,4 @@ def _grade_dns_poisoning(container) -> float:
     if len(history) > 5:
         score -= 0.2
 
-    return max(0.0, min(1.0, round(score, 2)))
+    return max(0.01, min(0.99, round(score, 2)))
