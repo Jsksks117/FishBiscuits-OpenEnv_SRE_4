@@ -128,7 +128,7 @@ TASK_DEFINITIONS = {
         "apt-get install -y -qq nginx net-tools procps > /dev/null 2>&1\n"
         "service nginx stop || true\n"
         "# Start a rogue python listener on port 80\n"
-        "python3 -c 'import socket; s=socket.socket(); s.bind((\"0.0.0.0\", 80)); s.listen(1); import time; time.sleep(3600)' &\n"
+        "python3 -c 'import socket; s=socket.socket(); s.bind((\"0.0.0.0\", 80)); s.listen(1); import time; time.sleep(3600)' >/dev/null 2>&1 &\n"
         "sleep 1\n"
     ),
 },
@@ -167,6 +167,108 @@ TASK_DEFINITIONS = {
         "echo '10.255.255.255 db.local' >> /etc/hosts\n"
     ),
 },
+"task_7_db_pipeline": {
+    "name": "DB Corruption Pipeline",
+    "difficulty": "hard",
+    "description": (
+        "The database is completely down and the application cannot connect. You must perform a full recovery pipeline. "
+        "1) Find and stop the rogue process blocking port 5432. "
+        "2) The PostgreSQL pg_hba.conf file has its permissions erased and contains a syntax error. Fix both so it's readable. "
+        "3) Start the PostgreSQL service. "
+        "4) Read the new expected base64 password from /opt/auth/token.txt, decode it, and update the 'appuser' account in PostgreSQL. "
+        "5) Finally, update the application config at /etc/myapp/config.json with this new decoded password instead of the old one, "
+        "and start the application 'myapp' daemon (a placeholder service we've provided)."
+    ),
+    "setup_script": (
+        "set -e\n"
+        "export DEBIAN_FRONTEND=noninteractive\n"
+        "apt-get update -qq > /dev/null 2>&1\n"
+        "apt-get install -y -qq postgresql procps python3 > /dev/null 2>&1\n"
+        "service postgresql start\n"
+        "su - postgres -c \"psql -c \\\"CREATE USER appuser WITH PASSWORD 'wrong_password';\\\"\" || true\n"
+        "service postgresql stop\n"
+        "# 1. Rogue process on 5432\n"
+        "python3 -c 'import socket; s=socket.socket(); s.bind((\"0.0.0.0\", 5432)); s.listen(1); import time; time.sleep(3600)' >/dev/null 2>&1 &\n"
+        "# 2. Break pg_hba.conf\n"
+        "PG_HBA=$(find /etc/postgresql -name pg_hba.conf -type f)\n"
+        "echo '!!!CORRUPT!!!' >> $PG_HBA\n"
+        "chmod 000 $PG_HBA\n"
+        "# 3. Auth token\n"
+        "mkdir -p /opt/auth\n"
+        "echo 'cDRzc3cwcmRfVTNQ' > /opt/auth/token.txt\n"
+        "# 4. App config\n"
+        "mkdir -p /etc/myapp\n"
+        "echo '{\"db_user\": \"appuser\", \"db_pass\": \"old_password\"}' > /etc/myapp/config.json\n"
+        "# 5. Mock app service\n"
+        "echo '#!/bin/bash\nwhile true; do sleep 10; done' > /usr/local/bin/myappd\n"
+        "chmod +x /usr/local/bin/myappd\n"
+    ),
+},
+"task_8_web_restore": {
+    "name": "Webserver Pipeline Complete Restore",
+    "difficulty": "hard",
+    "description": (
+        "The Nginx web server is completely broken due to a botched system update. "
+        "1) The missing SSL certificates have been backed up in /root/backup-certs.tar.gz. Extract them to /etc/ssl/certs/. "
+        "2) The default symlink in /etc/nginx/sites-enabled/ is broken. Remove it. "
+        "3) Symlink the /etc/nginx/sites-available/myapp config to sites-enabled. "
+        "4) The myapp config has a syntax error. Fix it. "
+        "5) The web root /var/www/html/ is empty! Restore the files from /var/backups/html/ into it. "
+        "6) Ensure /var/www/html/ is owned by www-data. "
+        "7) Start the nginx service successfully."
+    ),
+    "setup_script": (
+        "set -e\n"
+        "export DEBIAN_FRONTEND=noninteractive\n"
+        "apt-get update -qq > /dev/null 2>&1\n"
+        "apt-get install -y -qq nginx procps tar > /dev/null 2>&1\n"
+        "# 1. SSL certs\n"
+        "mkdir -p /tmp/certs\n"
+        "touch /tmp/certs/myapp.crt /tmp/certs/myapp.key\n"
+        "tar -czf /root/backup-certs.tar.gz -C /tmp certs\n"
+        "rm -rf /tmp/certs\n"
+        "# 2. Sites-enabled\n"
+        "rm -f /etc/nginx/sites-enabled/default\n"
+        "ln -s /does/not/exist /etc/nginx/sites-enabled/default\n"
+        "# 3. Symlink & 4. Syntax Error\n"
+        "echo -e 'server {\\nlisten 80;\\nlisten 443 ssl;\\nssl_certificate /etc/ssl/certs/myapp.crt;\\nssl_certificate_key /etc/ssl/certs/myapp.key;\\nroot /var/www/html;\\nindex index.html;\\nINVALID_DIRECTIVE;\\n}' > /etc/nginx/sites-available/myapp\n"
+        "# 5. Web root restore\n"
+        "mkdir -p /var/backups/html\n"
+        "echo '<h1>Restored!</h1>' > /var/backups/html/index.html\n"
+        "rm -rf /var/www/html\n"
+        "mkdir -p /var/www/html\n"
+        "chown root:root /var/www/html\n"
+    ),
+},
+"task_9_disk_clean": {
+    "name": "Disk Clean & Service Chain",
+    "difficulty": "hard",
+    "description": (
+        "The server is having severe disk and logging problems. "
+        "1) A huge sparse file at /tmp/fill.dd is consuming excessive blocks. Remove it. "
+        "2) The /var/log/syslog file was deleted accidentally. Recreate it. "
+        "3) Ensure /var/log/syslog is owned by syslog:adm so the service can write to it. "
+        "4) Start the rsyslog service successfully. "
+        "5) A vital cronjob was backed up to /root/cron.bak. Restore it to /etc/cron.d/logsync. "
+        "6) Fix its permissions (it must be exactly 644, not executable, or cron will refuse it). "
+        "7) Start the cron service to ensure it runs."
+    ),
+    "setup_script": (
+        "set -e\n"
+        "export DEBIAN_FRONTEND=noninteractive\n"
+        "apt-get update -qq > /dev/null 2>&1\n"
+        "apt-get install -y -qq rsyslog cron procps > /dev/null 2>&1\n"
+        "# 1. Sparse file\n"
+        "dd if=/dev/zero of=/tmp/fill.dd bs=1M count=0 seek=5000 2>/dev/null\n"
+        "# 2. Syslog broken\n"
+        "service rsyslog stop || true\n"
+        "rm -f /var/log/syslog\n"
+        "# 3. Cron backed up\n"
+        "service cron stop || true\n"
+        "echo '* * * * * root /usr/bin/sync' > /root/cron.bak\n"
+        "chmod 0777 /root/cron.bak\n"
+    ),
+},
 }
 
 
@@ -201,6 +303,9 @@ def grade_task(task_id: str, container) -> float:
         "task_4_port_conflict": _grade_port_conflict,
         "task_5_disk_pressure": _grade_disk_pressure,
         "task_6_dns_poisoning": _grade_dns_poisoning,
+        "task_7_db_pipeline": _grade_db_pipeline,
+        "task_8_web_restore": _grade_web_restore,
+        "task_9_disk_clean": _grade_disk_clean,
     }
     grader = graders.get(task_id)
     if grader is None:
@@ -444,5 +549,131 @@ def _grade_dns_poisoning(container) -> float:
     history = _get_history(container).splitlines()
     if len(history) > 5:
         score -= 0.2
+
+    return max(0.01, min(0.99, round(score, 2)))
+
+
+# ---------------------------------------------------------------------------
+#  Advanced Individual graders (Task 7-9)
+# ---------------------------------------------------------------------------
+
+def _grade_db_pipeline(container) -> float:
+    score = 0.0
+
+    # 1. Rogue process killed (+0.10)
+    rogue_check = _exec(container, "ss -tulpn 2>/dev/null | grep -q ':5432 ' | grep python3 || echo GONE")
+    if "GONE" in rogue_check:
+        score += 0.10
+
+    # 2. Permissions fixed (+0.15)
+    pg_hba = _exec(container, "find /etc/postgresql -name pg_hba.conf -type f | head -n 1")
+    if pg_hba:
+        perms = _exec(container, f"stat -c '%a' {pg_hba} 2>/dev/null || echo 000")
+        if int(perms) > 0 and '0' not in perms[0]: # Not 000
+            score += 0.15
+
+        # 3. Syntax fixed (+0.15)
+        syntax_check = _exec(container, f"grep '!!!CORRUPT!!!' {pg_hba} || echo GONE")
+        if "GONE" in syntax_check:
+            score += 0.15
+
+    # 4. Service started (+0.15)
+    pg_run = _exec(container, "pgrep -f 'postgres' || echo STOPPED")
+    if "STOPPED" not in pg_run:
+        score += 0.15
+
+    # Make sure we can check db connection
+    _exec(container, "service postgresql start >/dev/null 2>&1")
+
+    # 5. Token found and 6. User updated (+0.10 + 0.15 = +0.25)
+    history = _get_history(container)
+    if "token.txt" in history or "base64" in history:
+        score += 0.10
+    connect_test = _exec(container, "PGPASSWORD='p4ssw0rd_U3P' psql -U appuser -d postgres -h 127.0.0.1 -c '\\q' 2>/dev/null && echo SUCCESS || echo FAIL")
+    if "SUCCESS" in connect_test:
+        score += 0.15
+
+    # 7. Config updated (+0.10)
+    config_check = _exec(container, "grep 'p4ssw0rd_U3P' /etc/myapp/config.json || echo FAIL")
+    if "FAIL" not in config_check:
+        score += 0.10
+
+    # 8. App service started (+0.09)
+    app_run = _exec(container, "pgrep -f 'myappd' || echo STOPPED")
+    if "STOPPED" not in app_run:
+        score += 0.09
+
+    return max(0.01, min(0.99, round(score, 2)))
+
+
+def _grade_web_restore(container) -> float:
+    score = 0.0
+
+    # 1. Certs restored (+0.10)
+    if "EXISTS" in _exec(container, "[ -f /etc/ssl/certs/myapp.crt ] && echo EXISTS"):
+        score += 0.10
+
+    # 2. Broken default symlink removed (+0.10)
+    if "GONE" in _exec(container, "[ ! -L /etc/nginx/sites-enabled/default ] && echo GONE"):
+        score += 0.10
+
+    # 3. myapp symlinked (+0.15)
+    if "YES" in _exec(container, "[ -L /etc/nginx/sites-enabled/myapp ] && echo YES"):
+        score += 0.15
+
+    # 4. Web files restored (+0.15)
+    if "YES" in _exec(container, "[ -f /var/www/html/index.html ] && echo YES"):
+        score += 0.15
+
+    # 5. Ownership fixed (+0.15)
+    owner = _exec(container, "stat -c '%U' /var/www/html/index.html 2>/dev/null || echo root")
+    if owner == "www-data":
+        score += 0.15
+
+    # 6. Syntax error fixed (+0.15)
+    syntax = _exec(container, "grep 'INVALID_DIRECTIVE' /etc/nginx/sites-available/myapp || echo GONE")
+    if "GONE" in syntax:
+        score += 0.15
+
+    # 7. Nginx started (+0.19)
+    proc = _exec(container, "pgrep -x nginx > /dev/null 2>&1 && echo RUNNING || echo STOPPED")
+    if "RUNNING" in proc:
+        score += 0.19
+
+    return max(0.01, min(0.99, round(score, 2)))
+
+
+def _grade_disk_clean(container) -> float:
+    score = 0.0
+
+    # 1. Sparse file removed (+0.15)
+    if "GONE" in _exec(container, "[ ! -f /tmp/fill.dd ] && echo GONE"):
+        score += 0.15
+    
+    # 2. Syslog file created (+0.10)
+    if "YES" in _exec(container, "[ -f /var/log/syslog ] && echo YES"):
+        score += 0.10
+
+    # 3. Syslog ownership fixed (+0.15)
+    user = _exec(container, "stat -c '%U:%G' /var/log/syslog 2>/dev/null || echo root:root")
+    if "syslog:adm" in user:
+        score += 0.15
+
+    # 4. Rsyslog started (+0.15)
+    if "RUNNING" in _exec(container, "pgrep -f rsyslogd >/dev/null && echo RUNNING"):
+        score += 0.15
+
+    # 5. Cronjob restored (+0.15)
+    if "YES" in _exec(container, "[ -f /etc/cron.d/logsync ] && echo YES"):
+        score += 0.15
+
+    # 6. Cronjob permissions fixed (+0.10)
+    perms = _exec(container, "stat -c '%a' /etc/cron.d/logsync 2>/dev/null || echo 000")
+    if "644" in perms:
+        score += 0.10
+
+    # 7. Cron service started (+0.19)
+    if "RUNNING" in _exec(container, "pgrep -x cron >/dev/null && echo RUNNING"):
+        score += 0.19
 
     return max(0.01, min(0.99, round(score, 2)))

@@ -67,7 +67,7 @@ COPY --from=builder /app/env /app/env
 # (when Docker daemon is unavailable, e.g. HF Spaces)
 RUN apt-get -o Acquire::ForceIPv4=true update && \
     apt-get install -y --no-install-recommends \
-        nginx curl procps iproute2 && \
+        nginx curl procps iproute2 postgresql python3 tar cron logrotate rsyslog && \
     rm -rf /var/lib/apt/lists/* && \
     # Save a pristine copy of nginx.conf for reset between episodes
     cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.dpkg-dist

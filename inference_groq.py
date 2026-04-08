@@ -44,6 +44,11 @@ SYSTEM_PROMPT = textwrap.dedent("""
     You will be given the task description and terminal output.
     Output ONLY the bash command you want to run.
     Do NOT use backticks, code blocks, or explanations. Just the raw command.
+    Explore the environment, check logs, find files, and chain commands step-by-step as needed.
+    CRITICAL INSTRUCTIONS:
+    1. Do NOT chain many commands together with `&&`. Run 1 or 2 commands per step so you can carefully read the output!
+    2. Do NOT repeat the exact same command over and over. If a command fails or has no output, TRY A DIFFERENT APPROACH. (e.g. if `lsof` is missing, use `ss` or `netstat`).
+    3. Check /var/log/ for clues if you are stuck.
     If you are unsure, respond with: echo 'investigating'
 """).strip()
 
@@ -84,10 +89,10 @@ def truncate_output(text: str, max_len: int = MAX_OUTPUT_CHARS) -> str:
 
 
 def build_history_lines(history: List[str]) -> str:
-    """Return the last 4 history entries, like the sample script."""
+    """Return the last 8 history entries so the LLM remembers what it's tried."""
     if not history:
         return "None"
-    return "\n".join(history[-4:])
+    return "\n".join(history[-8:])
 
 
 def build_user_prompt(step: int, task_description: str, terminal_output: str, history: List[str]) -> str:
@@ -140,8 +145,8 @@ def main() -> None:
     async_env = SreAgentEnv(base_url="http://localhost:7860", message_timeout_s=180.0)
     env = async_env.sync()
 
-    # We run 3 episodes (one per task — the environment cycles tasks on reset)
-    tasks_to_run = 6
+    # We run 9 episodes (one per task — the environment cycles tasks on reset)
+    tasks_to_run = 9
     all_scores = []
 
     for episode in range(tasks_to_run):
